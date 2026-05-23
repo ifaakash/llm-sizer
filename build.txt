@@ -1,0 +1,6 @@
+# Build the image 
+# Test the default nginx image
+# Exec into it and list all the files in container
+# Remove the default nginx configuration file
+# Re-create the image 
+# Test out the image in local
