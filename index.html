@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LLM Hardware Sizing Simulator</title>
+    <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+</head>
+<body class="bg-slate-900 text-slate-100 min-h-screen font-sans antialiased">
+
+    <div class="max-w-4xl mx-auto p-4 md:p-8">
+        <header class="mb-8 border-b border-slate-800 pb-6">
+            <h1 class="text-3xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 to-blue-500">
+                LLM Hardware Sizing Simulator
+            </h1>
+            <p class="text-slate-400 mt-2 text-sm md:text-base">
+                Calculate infrastructure RAM/VRAM footprints and assess deployment viability for local LLM agents.
+            </p>
+        </header>
+
+        <div class="grid grid-cols-1 gap-8">
+            <div class="bg-slate-800 p-6 rounded-xl border border-slate-700 shadow-xl">
+                <h2 class="text-xl font-bold mb-4 text-cyan-400">Model & Hardware Configurations</h2>
+                
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div>
+                        <label class="block text-xs font-semibold uppercase tracking-wider text-slate-400 mb-2">Model Parameter Size</label>
+                        <select id="paramSize" class="w-full bg-slate-900 border border-slate-700 rounded-lg p-2.5 text-slate-200 focus:outline-none focus:border-cyan-500">
+                            <option value="0.5">0.5B (e.g., Qwen 2.5 0.5B)</option>
+                            <option value="1.5">1.5B (e.g., Qwen 2.5 1.5B)</option>
+                            <option value="3">3B (e.g., Llama 3.2 3B)</option>
+                            <option value="7" selected>7B / 8B (e.g., Llama 3.1 / Mistral)</option>
+                            <option value="13">13B (e.g., Llama 2 13B)</option>
+                            <option value="32">32B (e.g., Qwen 2.5 32B)</option>
+                            <option value="70">70B (e.g., Llama 3 70B)</option>
+                        </select>
+                    </div>
+
+                    <div>
+                        <label class="block text-xs font-semibold uppercase tracking-wider text-slate-400 mb-2">Quantization Precision</label>
+                        <select id="quantization" class="w-full bg-slate-900 border border-slate-700 rounded-lg p-2.5 text-slate-200 focus:outline-none focus:border-cyan-500">
+                            <option value="16">FP16 / BF16 (Uncompressed - 16 bit)</option>
+                            <option value="8">INT8 (Moderate Compression - 8 bit)</option>
+                            <option value="4" selected>INT4 / GGUF Q4 (High Compression - 4 bit)</option>
+                        </select>
+                    </div>
+
+                    <div>
+                        <label class="block text-xs font-semibold uppercase tracking-wider text-slate-400 mb-2">Target Context Window (Tokens)</label>
+                        <div class="flex items-center space-x-4">
+                            <input type="range" id="contextRange" min="1024" max="32768" step="1024" value="8192" class="w-full h-2 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-cyan-500">
+                            <span id="contextVal" class="text-sm font-mono font-bold bg-slate-900 px-3 py-1 rounded border border-slate-700 w-24 text-center">8192</span>
+                        </div>
+                    </div>
+
+                    <div>
+                        <label class="block text-xs font-semibold uppercase tracking-wider text-slate-400 mb-2">Available System RAM / VRAM (GB)</label>
+                        <select id="systemRam" class="w-full bg-slate-900 border border-slate-700 rounded-lg p-2.5 text-slate-200 focus:outline-none focus:border-cyan-500">
+                            <option value="4">4 GB (Pi 5 Low-spec)</option>
+                            <option value="8" selected>8 GB (Pi 5 Standard / Base Mac)</option>
+                            <option value="16">16 GB (Mid-spec PC / Mac)</option>
+                            <option value="32">32 GB (High-spec Workstation)</option>
+                            <option value="64">64 GB (Enterprise Node)</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+
+            <div class="bg-slate-800 p-6 rounded-xl border border-slate-700 shadow-xl">
+                <h2 class="text-xl font-bold mb-6 text-cyan-400">Infrastructure Impact Metrics</h2>
+                
+                <div id="statusBanner" class="mb-6 p-4 rounded-lg text-center font-bold tracking-wide transition-all duration-300">
+                    -- Calculating Status --
+                </div>
+
+                <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
+                    <div class="bg-slate-900 p-4 rounded-lg border border-slate-800 text-center">
+                        <div class="text-xs text-slate-400 font-medium uppercase mb-1">Model Weights</div>
+                        <div id="weightMetric" class="text-2xl font-mono font-bold text-slate-100">0.00 GB</div>
+                    </div>
+                    <div class="bg-slate-900 p-4 rounded-lg border border-slate-800 text-center">
+                        <div class="text-xs text-slate-400 font-medium uppercase mb-1">KV Cache Estimate</div>
+                        <div id="cacheMetric" class="text-2xl font-mono font-bold text-slate-100">0.00 GB</div>
+                    </div>
+                    <div class="bg-slate-900 p-4 rounded-lg border border-slate-800 text-center">
+                        <div class="text-xs text-slate-400 font-medium uppercase mb-1">Total Needed Memory</div>
+                        <div id="totalMetric" class="text-2xl font-mono font-bold text-cyan-400">0.00 GB</div>
+                    </div>
+                </div>
+
+                <div class="w-full bg-slate-900 rounded-full h-6 border border-slate-700 overflow-hidden relative">
+                    <div id="memoryProgressBar" class="h-full transition-all duration-300 rounded-full" style="width: 0%"></div>
+                    <div id="progressBarLabel" class="absolute inset-0 flex items-center justify-center text-xs font-mono font-bold text-white shadow-sm">0% Memory Capacity Used</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const paramSizeEl = document.getElementById('paramSize');
+        const quantizationEl = document.getElementById('quantization');
+        const contextRangeEl = document.getElementById('contextRange');
+        const contextValEl = document.getElementById('contextVal');
+        const systemRamEl = document.getElementById('systemRam');
+
+        const weightMetricEl = document.getElementById('weightMetric');
+        const cacheMetricEl = document.getElementById('cacheMetric');
+        const totalMetricEl = document.getElementById('totalMetric');
+        const statusBannerEl = document.getElementById('statusBanner');
+        const memoryProgressBarEl = document.getElementById('memoryProgressBar');
+        const progressBarLabelEl = document.getElementById('progressBarLabel');
+
+        function calculateMetrics() {
+            const params = parseFloat(paramSizeEl.value);
+            const bits = parseInt(quantizationEl.value);
+            const tokens = parseInt(contextRangeEl.value);
+            const systemRam = parseInt(systemRamEl.value);
+            const osOverhead = 1.5; // Constant baseline OS resource drain
+
+            contextValEl.textContent = tokens;
+
+            // 1. Calculate base static weight overhead
+            const modelWeightsGB = (params * bits) / 8;
+
+            // 2. Dynamic KV Cache calculation approximation
+            // SRE multiplier scaling factor base: 1.2MB per billion params per 1k tokens at 16-bit
+            const precisionFactor = bits / 16;
+            const kvCacheGB = (params * 0.0000012) * tokens * precisionFactor;
+
+            // 3. Compute structural totals
+            const totalRequiredMemory = modelWeightsGB + kvCacheGB + osOverhead;
+            const consumptionPercent = Math.min((totalRequiredMemory / systemRam) * 100, 100);
+
+            // Update UI metric labels
+            weightMetricEl.textContent = `${modelWeightsGB.toFixed(2)} GB`;
+            cacheMetricEl.textContent = `${kvCacheGB.toFixed(2)} GB`;
+            totalMetricEl.textContent = `${totalRequiredMemory.toFixed(2)} GB`;
+
+            // Adjust Progress Bar Styling
+            memoryProgressBarEl.style.width = `${consumptionPercent}%`;
+            progressBarLabelEl.textContent = `${Math.round((totalRequiredMemory / systemRam) * 100)}% System Allocation`;
+
+            // Clear styling classifications
+            statusBannerEl.className = "mb-6 p-4 rounded-lg text-center font-bold tracking-wide transition-all duration-300 ";
+            memoryProgressBarEl.className = "h-full transition-all duration-300 rounded-full ";
+
+            // Status Boundary Evaluator Loops
+            if (totalRequiredMemory > systemRam) {
+                statusBannerEl.textContent = "CRITICAL STATE: OUT OF MEMORY (OOM) ENGINE PANIC RISK";
+                statusBannerEl.classList.add("bg-red-900/50", "text-red-400", "border", "border-red-700");
+                memoryProgressBarEl.classList.add("bg-gradient-to-r", "from-red-600", "to-rose-500");
+            } else if (totalRequiredMemory > (systemRam * 0.8)) {
+                statusBannerEl.textContent = "WARNING STATE: SWAP MEMORY DEGRADATION RISK / HIGH LATENCY";
+                statusBannerEl.classList.add("bg-amber-900/50", "text-amber-400", "border", "border-amber-700");
+                memoryProgressBarEl.classList.add("bg-gradient-to-r", "from-amber-500", "to-orange-500");
+            } else {
+                statusBannerEl.textContent = "STABLE DEPLOYMENT ENVIRONMENT: FITS COMFORTABLY IN RAM";
+                statusBannerEl.classList.add("bg-emerald-900/50", "text-emerald-400", "border", "border-emerald-700");
+                memoryProgressBarEl.classList.add("bg-gradient-to-r", "from-emerald-500", "to-cyan-500");
+            }
+        }
+
+        // Attach system context triggers
+        paramSizeEl.addEventListener('change', calculateMetrics);
+        quantizationEl.addEventListener('change', calculateMetrics);
+        systemRamEl.addEventListener('change', calculateMetrics);
+        contextRangeEl.addEventListener('input', calculateMetrics);
+
+        // Run calculation on primary instantiation
+        calculateMetrics();
+    </script>
+</body>
+</html>
