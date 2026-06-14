@@ -73,13 +73,13 @@
                         <tbody class="divide-y divide-slate-700/50">
                             <tr class="hover:bg-slate-800/50 transition-colors">
                                 <td class="px-6 py-4 font-medium text-slate-200">Base Model Weights</td>
-                                <td id="tblConfigWeights" class="px-6 py-4 font-mono text-slate-400">7B Params @ INT4</td>
-                                <td id="tblSizeWeights" class="px-6 py-4 font-mono font-bold text-right">3.50 GB</td>
+                                <td id="tblConfigWeights" class="px-6 py-4 font-mono text-slate-400">-</td>
+                                <td id="tblSizeWeights" class="px-6 py-4 font-mono font-bold text-right">-</td>
                             </tr>
                             <tr class="hover:bg-slate-800/50 transition-colors">
                                 <td class="px-6 py-4 font-medium text-slate-200">KV Cache (Tokens)</td>
-                                <td id="tblConfigKV" class="px-6 py-4 font-mono text-slate-400">4,096 context x 1 user(s)</td>
-                                <td id="tblSizeKV" class="px-6 py-4 font-mono font-bold text-right">1.00 GB</td>
+                                <td id="tblConfigKV" class="px-6 py-4 font-mono text-slate-400">-</td>
+                                <td id="tblSizeKV" class="px-6 py-4 font-mono font-bold text-right">-</td>
                             </tr>
                             <tr class="hover:bg-slate-800/50 transition-colors">
                                 <td class="px-6 py-4 font-medium text-slate-200">OS Overhead</td>
@@ -89,7 +89,7 @@
                             <tr class="bg-slate-800/30">
                                 <td class="px-6 py-4 font-bold text-cyan-400 text-base">Total Required</td>
                                 <td class="px-6 py-4 font-mono text-slate-400">Estimated VRAM/RAM needed</td>
-                                <td id="tblSizeTotal" class="px-6 py-4 font-mono font-bold text-cyan-400 text-lg text-right">6.00 GB</td>
+                                <td id="tblSizeTotal" class="px-6 py-4 font-mono font-bold text-cyan-400 text-lg text-right">-</td>
                             </tr>
                         </tbody>
                     </table>
@@ -100,31 +100,58 @@
                     <div id="progressBarLabel" class="absolute inset-0 flex items-center justify-center text-xs font-mono font-bold text-white shadow-sm">0% Capacity Used</div>
                 </div>
             </div>
+
+            <div class="bg-slate-800 p-6 rounded-xl border border-slate-700 shadow-xl">
+                <h2 class="text-xl font-bold mb-4 text-cyan-400">Documentation & Math</h2>
+                
+                <div class="space-y-6 text-sm text-slate-300">
+                    <div>
+                        <h3 class="text-lg font-semibold text-slate-100 mb-2">What is the KV Cache?</h3>
+                        <p class="leading-relaxed">
+                            In Transformer-based LLMs, the <strong>Key-Value (KV) Cache</strong> stores the intermediate attention states of previous tokens. Instead of recalculating the mathematical relationships of the entire conversation history every time it generates a single new word, the model stores previous token data in RAM. This vastly speeds up inference latency but acts as a dynamic memory drain that grows rapidly as the conversation gets longer.
+                        </p>
+                    </div>
+
+                    <div>
+                        <h3 class="text-lg font-semibold text-slate-100 mb-2">How do Concurrent Users impact sizing?</h3>
+                        <p class="leading-relaxed">
+                            When deploying an LLM endpoint, the base model weights are loaded into system memory exactly <strong>once</strong>. All users share those core weights. However, the KV Cache is <em>user-specific</em>. Every concurrent user has their own unique prompt, context window, and chat history. Therefore, the memory footprint of the KV cache scales linearly with the amount of active, simultaneous users querying the model.
+                        </p>
+                    </div>
+
+                    <div>
+                        <h3 class="text-lg font-semibold text-slate-100 mb-3">The SRE Sizing Formulas</h3>
+                        <div class="bg-slate-900 p-4 rounded-lg border border-slate-700 space-y-3 font-mono text-xs md:text-sm">
+                            <p><span class="text-emerald-400">Model_Weights (GB)</span> = (Parameters * Quantization_Bits) / 8</p>
+                            <p><span class="text-blue-400">Base_Cache_Per_User (GB)</span> = (Parameters * 0.0000012) * Context_Tokens * (Quantization_Bits / 16)</p>
+                            <p><span class="text-purple-400">Total_KV_Cache (GB)</span> = Base_Cache_Per_User * Concurrent_Users</p>
+                            <hr class="border-slate-700 my-2">
+                            <p class="text-cyan-400 font-bold">Total_Required_RAM = Model_Weights + Total_KV_Cache + 1.5 GB (OS Baseline)</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
         </div>
     </div>
 
     <script>
-        // Inputs
         const paramSizeEl = document.getElementById('paramSize');
         const quantizationEl = document.getElementById('quantization');
         const contextTokensEl = document.getElementById('contextTokens');
         const concurrentUsersEl = document.getElementById('concurrentUsers');
         const systemRamEl = document.getElementById('systemRam');
 
-        // Table Outputs
         const tblConfigWeightsEl = document.getElementById('tblConfigWeights');
         const tblSizeWeightsEl = document.getElementById('tblSizeWeights');
         const tblConfigKVEl = document.getElementById('tblConfigKV');
         const tblSizeKVEl = document.getElementById('tblSizeKV');
         const tblSizeTotalEl = document.getElementById('tblSizeTotal');
 
-        // UI Outputs
         const statusBannerEl = document.getElementById('statusBanner');
         const memoryProgressBarEl = document.getElementById('memoryProgressBar');
         const progressBarLabelEl = document.getElementById('progressBarLabel');
 
         function calculateMetrics() {
-            // Parse inputs (fallback to 0 if invalid input is typed)
             const params = parseFloat(paramSizeEl.value) || 0;
             const bits = parseInt(quantizationEl.value) || 16;
             const tokens = parseInt(contextTokensEl.value) || 0;
@@ -134,11 +161,9 @@
 
             // 1. Model Weights
             const modelWeightsGB = (params * bits) / 8;
-            
-            // Format bits string for UI
             const quantLabel = bits === 16 ? "FP16" : (bits === 8 ? "INT8" : "INT4");
 
-            // 2. KV Cache Estimate (scaled by users)
+            // 2. KV Cache Estimate
             const precisionFactor = bits / 16;
             const baseCachePerUser = (params * 0.0000012) * tokens * precisionFactor;
             const kvCacheGB = baseCachePerUser * users;
@@ -180,12 +205,10 @@
             }
         }
 
-        // Event Listeners for real-time calculation
         const inputs = [paramSizeEl, quantizationEl, contextTokensEl, concurrentUsersEl, systemRamEl];
         inputs.forEach(input => input.addEventListener('input', calculateMetrics));
         inputs.forEach(input => input.addEventListener('change', calculateMetrics));
 
-        // Initial render
         calculateMetrics();
     </script>
 </body>
