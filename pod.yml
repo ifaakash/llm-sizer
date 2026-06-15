@@ -2,6 +2,8 @@ apiVersion: v1
 kind: Pod
 metadata:
  name: llm-sizer-pod
+ labels:
+  tag: llm-sizer-pod
 spec:
  containers:
   - name: llm-sizer
